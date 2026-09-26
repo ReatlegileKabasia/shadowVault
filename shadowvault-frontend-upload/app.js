@@ -214,6 +214,12 @@ async function loadEntriesFromBackend() {
             throw new Error("Unlock the vault to decrypt incidents.");
         }
 
+        const loadingMessage = document.createElement("p");
+        loadingMessage.className = "empty-msg loading-msg";
+        loadingMessage.setAttribute("role", "status");
+        loadingMessage.textContent = "Connecting to the vault server. It may take up to a minute to wake up...";
+        entriesList.replaceChildren(loadingMessage);
+
         const response = await fetch(API_URL);
         if (!response.ok) {
             throw new Error(`Request failed (HTTP ${response.status}).`);
@@ -284,7 +290,9 @@ if (
     (window.location.protocol === "https:" ||
         ["localhost", "127.0.0.1"].includes(window.location.hostname))
 ) {
-    navigator.serviceWorker.register("./sw.js").catch(error => {
-        console.error("Could not register the offline app shell:", error);
+    window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./sw.js")
+            .then(() => console.log("Service Worker registered successfully."))
+            .catch(error => console.error("Service Worker registration failed:", error));
     });
 }

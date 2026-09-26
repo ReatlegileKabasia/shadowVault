@@ -1,4 +1,4 @@
-const CACHE_NAME = "quick-calc-shell-v1";
+const CACHE_NAME = "quick-calc-shell-v2";
 const APP_SHELL = [
     "./",
     "./index.html",
@@ -21,7 +21,8 @@ self.addEventListener("activate", event => {
     event.waitUntil(
         caches.keys()
             .then(keys => Promise.all(
-                keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))
+                keys.filter(key => key.startsWith("quick-calc-shell-") && key !== CACHE_NAME)
+                    .map(key => caches.delete(key))
             ))
             .then(() => self.clients.claim())
     );

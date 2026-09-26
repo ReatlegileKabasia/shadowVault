@@ -207,6 +207,32 @@ input[type="text"], textarea {
     border-radius: 4px;
 }
 
+.loading-msg {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+    color: #334155;
+    font-size: 13px;
+}
+
+.loading-msg::before {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    border: 2px solid #cbd5e1;
+    border-top-color: #2563eb;
+    border-radius: 50%;
+    content: "";
+    animation: vault-loading-spin 0.8s linear infinite;
+}
+
+@keyframes vault-loading-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .entry-card h4 { font-size: 15px; color: #1e293b; }
 .entry-card p { font-size: 13px; color: #475569; margin-top: 4px; }
 .entry-card span { font-size: 11px; color: #94a3b8; }
