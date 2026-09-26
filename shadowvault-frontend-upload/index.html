@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Quick Calculator</title>
+    <meta name="theme-color" content="#1e293b">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Quick Calc">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="icon.svg">
+    <link rel="stylesheet" href="styleVault.css">
+</head>
+
+
+<body>
+   <!--CALCULATOR DECOY CONTAINER--> 
+   <div id="calculator-app" class="calculator-card">
+    <!--Display Screen for Calculator-->
+    <input type="text"  id="calc-screen" readonly value="0">
+
+<!--calculator Keypad grid-->
+    <div class="calculator-grid">
+
+     <button onclick="clearCalc()" class="btn-control">C</button>
+            <button onclick="appendCalc('/')" class="btn-operator">/</button>
+            <button onclick="appendCalc('*')" class="btn-operator">*</button>
+            <button onclick="appendCalc('-')" class="btn-operator">-</button>
+            
+            <button onclick="appendCalc('7')">7</button>
+            <button onclick="appendCalc('8')">8</button>
+            <button onclick="appendCalc('9')">9</button>
+            <button onclick="appendCalc('+')" class="btn-operator">+</button>
+            
+            <button onclick="appendCalc('4')">4</button>
+            <button onclick="appendCalc('5')">5</button>
+            <button onclick="appendCalc('6')">6</button>
+            <button onclick="evaluateCalc()" class="btn-equals">=</button>
+            
+            <button onclick="appendCalc('1')">1</button>
+            <button onclick="appendCalc('2')">2</button>
+            <button onclick="appendCalc('3')">3</button>
+            <button onclick="appendCalc('0')">0</button>
+        </div>   
+       <!--SECRET VAULT (hidden by default using css)-->
+
+        <div id="secret-vault" class="vault-modal hidden">
+            <div class="vault-content">
+                <!--Pannic button closes vault and redirects to google.com-->
+                <button id="panic-btn" onclick="triggerPanic()">Panic!🚨</button>
+
+                <h2>Secure Incident Log</h2>
+                <p class="subtitle">Incident details are encrypted on this device before saving.</p>
+
+                <!--Form to enter new incident -->
+                <form id="incident-form">
+                    <label for="incident-title"> Title/Category</label>
+                    <input type="text" id ="incident-title" placeholder="e.g., Verbal threat, Following, Physical argument" required>
+                    
+                    <label for ="incident-details">Detailed Description</label>
+                    <textarea id="incident-details" placeholder="Record date, time, location, witnesses, or exact statements..." required></textarea>
+
+                    <button type="submit" id="save-incident-btn">Save Incident</button>
+
+                </form>
+                <p id="api-status" role="status" aria-live="polite"></p>
+
+                <hr>
+                <h3>Saved Incidents</h3>
+                <div id="entries-list">
+                    <p class="empty-msg">No incidents recorded yet.</p>
+                </div>
+            </div>
+        </div>
+
+        <script src="config.js"></script>
+        <script src="app.js"></script>
+
+
+    </body>
+</html>

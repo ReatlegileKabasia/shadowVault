@@ -1,0 +1,17 @@
+{
+  "short_name": "Quick Calc",
+  "name": "Quick Calculator Utility",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    }
+  ],
+  "start_url": "./index.html",
+  "scope": "./",
+  "background_color": "#1e293b",
+  "theme_color": "#1e293b",
+  "display": "standalone"
+}
