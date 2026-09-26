@@ -32,6 +32,17 @@ class ProductionDataSourceConfigurationTests {
     }
 
     @Test
+    void convertsRenderPostgresUrlWithoutExplicitPort() {
+        ProductionDataSourceConfiguration.DatabaseSettings settings =
+                ProductionDataSourceConfiguration.parseDatabaseUrl(
+                        "postgres://vault-user:secret@db.example.internal/vault");
+
+        assertEquals("jdbc:postgresql://db.example.internal/vault", settings.jdbcUrl());
+        assertEquals("vault-user", settings.username());
+        assertEquals("secret", settings.password());
+    }
+
+    @Test
     void rejectsUnreplacedRenderPlaceholders() {
         assertThrows(IllegalStateException.class,
                 () -> ProductionDataSourceConfiguration.parseDatabaseUrl(

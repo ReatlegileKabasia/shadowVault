@@ -94,7 +94,8 @@ public class ProductionDataSourceConfiguration {
 
     private static void validatePostgresUri(URI uri, String configuredUrl) {
         if (uri.getHost() == null || uri.getHost().isBlank()
-                || uri.getPort() < 1
+                || uri.getPort() == 0
+                || uri.getPort() > 65535
                 || uri.getPath() == null
                 || uri.getPath().length() < 2
                 || uri.getHost().equalsIgnoreCase("host")
