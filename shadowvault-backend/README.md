@@ -38,10 +38,11 @@ Create a PostgreSQL database in Render, then configure these variables on the we
 - `SPRING_DATASOURCE_URL`: `jdbc:postgresql://HOST:PORT/DATABASE`
 - `SPRING_DATASOURCE_USERNAME`: the database username
 - `SPRING_DATASOURCE_PASSWORD`: the database password
+- alternatively, `DATABASE_URL`: Render's complete PostgreSQL URL (the application converts `postgres://` / `postgresql://` to JDBC and reads its credentials)
 - `JWT_SECRET_BASE64`: a private, randomly generated Base64 secret containing at least 32 random bytes
 - `APP_CORS_ALLOWED_ORIGINS`: the exact HTTPS origin serving the frontend, for example `https://your-site.example`
 
-Use the PostgreSQL database's **internal** host, port, and database name when the web service and database are in the same Render region. Render's displayed `postgres://` or `postgresql://` connection URL is not a JDBC URL: convert it to `jdbc:postgresql://HOST:PORT/DATABASE` and set the username and password in their separate variables. Do not commit database credentials to GitHub.
+Prefer linking the Render PostgreSQL database to the web service so Render supplies its internal `DATABASE_URL`. Alternatively, set `SPRING_DATASOURCE_URL` to an actual JDBC URL (`jdbc:postgresql://real-host:5432/real-database`) and set the username and password separately. The application also accepts a real `postgres://` or `postgresql://` value in `DATABASE_URL` and converts it to JDBC. Never enter sample text such as `HOST`, `PORT`, or `DATABASE`; the application detects these placeholders and exits with a clear configuration error. Do not commit database credentials to GitHub.
 
 Generate a JWT secret locally with `openssl rand -base64 48`; enter the output directly in Render's `JWT_SECRET_BASE64` environment variable. Do not use the development-only signing key outside local development.
 
