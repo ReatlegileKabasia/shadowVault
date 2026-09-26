@@ -1,39 +1,55 @@
 package com.example.shadowvault.controller;
 
 import com.example.shadowvault.model.Incident;
+import com.example.shadowvault.model.User;
+import com.example.shadowvault.dto.IncidentRequest;
 import com.example.shadowvault.repository.IncidentRepository;
+import com.example.shadowvault.repository.UserRepository;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/incidents") // Base URL endpoint
-@CrossOrigin(origins = "*")       // Allows our web frontend to send requests without CORS blocking
+@RequestMapping("/api/incidents")
 public class IncidentController {
 
     private final IncidentRepository repository;
+    private final UserRepository users;
 
-    // Dependency Injection: Spring automatically passes our Repository into this controller
-    public IncidentController(IncidentRepository repository) {
+    public IncidentController(IncidentRepository repository, UserRepository users) {
         this.repository = repository;
+        this.users = users;
     }
 
-    /**
-     * GET Endpoint: http://localhost:8080/api/incidents
-     * Returns a JSON list of all recorded incidents from the database.
-     */
     @GetMapping
-    public List<Incident> getAllIncidents() {
-        return repository.findAll();
+    public List<Incident> getUserIncidents(@AuthenticationPrincipal Jwt jwt) {
+        User user = getAuthenticatedUser(jwt);
+        return repository.findByUserIdOrderByIdAsc(user.getId());
     }
 
-    /**
-     * POST Endpoint: http://localhost:8080/api/incidents
-     * Receives JSON from the frontend, converts it into an Incident object,
-     * and saves it into the database.
-     */
     @PostMapping
-    public Incident createIncident(@RequestBody Incident incident) {
+    public Incident createIncident(
+            @Valid @RequestBody IncidentRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        Incident incident = new Incident(
+                request.title().trim(), request.details(), request.timestamp().trim());
+        incident.setUser(getAuthenticatedUser(jwt));
         return repository.save(incident);
+    }
+
+    private User getAuthenticatedUser(Jwt jwt) {
+        try {
+            long userId = Long.parseLong(jwt.getSubject());
+            return users.findById(userId)
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.UNAUTHORIZED, "Account no longer exists."));
+        } catch (NumberFormatException exception) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid access token.");
+        }
     }
 }

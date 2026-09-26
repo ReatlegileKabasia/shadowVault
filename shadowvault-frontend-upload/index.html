@@ -6,6 +6,7 @@
     <title>Quick Calculator</title>
     <meta name="theme-color" content="#1e293b">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Quick Calc">
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -43,7 +44,8 @@
             <button onclick="appendCalc('3')">3</button>
             <button onclick="appendCalc('0')">0</button>
         </div>   
-       <!--SECRET VAULT (hidden by default using css)-->
+           <button id="install-app-btn" class="install-app-btn hidden" type="button">Install App</button>
+          <!--SECRET VAULT (hidden by default using css)-->
 
         <div id="secret-vault" class="vault-modal hidden">
             <div class="vault-content">
@@ -51,15 +53,33 @@
                 <button id="panic-btn" onclick="triggerPanic()">Panic!🚨</button>
 
                 <h2>Secure Incident Log</h2>
-                <p class="subtitle">Incident details are encrypted on this device before saving.</p>
+                <p class="subtitle">Sign in to sync your account's incidents. Details are encrypted on this device before saving.</p>
+
+                <section id="account-panel">
+                    <h3 id="account-heading">Sign in to your account</h3>
+                    <form id="account-form">
+                        <label for="account-username">Username</label>
+                        <input type="text" id="account-username" autocomplete="username" minlength="3" maxlength="32" required>
+                        <label for="account-password">Password</label>
+                        <input type="password" id="account-password" autocomplete="current-password" minlength="12" maxlength="72" required>
+                        <button type="submit" id="account-submit-btn">Sign in</button>
+                    </form>
+                    <button type="button" id="account-mode-btn" class="secondary-btn">Create a new account</button>
+                    <p id="account-status" role="status" aria-live="polite"></p>
+                </section>
+
+                <div id="account-session" class="hidden">
+                    <span id="account-name"></span>
+                    <button type="button" id="logout-btn" class="secondary-btn">Switch account</button>
+                </div>
 
                 <!--Form to enter new incident -->
-                <form id="incident-form">
+                <form id="incident-form" class="hidden">
                     <label for="incident-title"> Title/Category</label>
                     <input type="text" id ="incident-title" placeholder="e.g., Verbal threat, Following, Physical argument" required>
                     
                     <label for ="incident-details">Detailed Description</label>
-                    <textarea id="incident-details" placeholder="Record date, time, location, witnesses, or exact statements..." required></textarea>
+                    <textarea id="incident-details" maxlength="20000" placeholder="Record date, time, location, witnesses, or exact statements..." required></textarea>
 
                     <button type="submit" id="save-incident-btn">Save Incident</button>
 

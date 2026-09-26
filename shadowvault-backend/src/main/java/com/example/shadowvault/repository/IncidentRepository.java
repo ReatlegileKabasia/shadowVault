@@ -4,6 +4,8 @@ import com.example.shadowvault.model.Incident;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
+
 /**
  * Extending JpaRepository grants this interface access to built-in methods:
  * - save(Incident entity) -> Inserts or Updates a record
@@ -13,5 +15,5 @@ import org.springframework.stereotype.Repository;
  */
 @Repository
 public interface IncidentRepository extends JpaRepository<Incident, Long> {
-    // No code needed inside! Spring Boot writes the database logic automatically!
+    List<Incident> findByUserIdOrderByIdAsc(Long userId);
 }

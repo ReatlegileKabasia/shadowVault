@@ -3,11 +3,17 @@ const API_HOST = window.location.hostname || "localhost";
 const API_PROTOCOL = window.location.protocol === "https:" ? "https:" : "http:";
 const API_BASE_URL = window.SHADOWVAULT_API_BASE_URL || `${API_PROTOCOL}//${API_HOST}:8080`;
 const API_URL = `${API_BASE_URL.replace(/\/+$/, "")}/api/incidents`;
-const SECRET_PIN = "1234";
+const PASSCODE_HASH_KEY = "vault_pin_hash";
+const USER_PASSCODE_HASHES_KEY = "vault_user_pin_hashes";
 const ENCRYPTED_PREFIX = "sv1:";
+const LEGACY_ENCRYPTION_PIN = "1234";
 const encryptionKeys = new Map();
 let currentInput = "0";
 let currentVaultPin = null;
+let unlockAccountHint = null;
+let accessToken = null;
+let accountMode = "login";
+let deferredInstallPrompt = null;
 
 // DOM Elements
 const screen = document.getElementById("calc-screen");
@@ -15,6 +21,30 @@ const vault = document.getElementById("secret-vault");
 const incidentForm = document.getElementById("incident-form");
 const entriesList = document.getElementById("entries-list");
 const apiStatus = document.getElementById("api-status");
+const accountForm = document.getElementById("account-form");
+const accountPanel = document.getElementById("account-panel");
+const accountSession = document.getElementById("account-session");
+const accountStatus = document.getElementById("account-status");
+
+async function hashPasscode(passcode) {
+    const data = new TextEncoder().encode(passcode);
+    const hashBuffer = await window.crypto.subtle.digest("SHA-256", data);
+    return Array.from(new Uint8Array(hashBuffer))
+        .map(byte => byte.toString(16).padStart(2, "0"))
+        .join("");
+}
+
+function getUserPasscodeHashes() {
+    const saved = localStorage.getItem(USER_PASSCODE_HASHES_KEY);
+    if (!saved) {
+        return {};
+    }
+    const hashes = JSON.parse(saved);
+    if (!hashes || Array.isArray(hashes) || typeof hashes !== "object") {
+        throw new Error("Saved account passcodes are damaged. Clear this app's local data to reset them.");
+    }
+    return hashes;
+}
 
 async function getEncryptionKey(pin, salt) {
     if (!window.crypto?.subtle) {
@@ -74,26 +104,44 @@ async function decryptText(value, pin) {
     }
 
     try {
-        const payload = base64ToBytes(value.slice(ENCRYPTED_PREFIX.length));
-        if (payload.length < 16 + 12 + 16) {
-            throw new Error("Encrypted incident data is incomplete.");
-        }
-
-        const salt = payload.slice(0, 16);
-        const iv = payload.slice(16, 28);
-        const ciphertext = payload.slice(28);
-        const key = await getEncryptionKey(pin, salt);
-        const decrypted = await window.crypto.subtle.decrypt(
-            { name: "AES-GCM", iv },
-            key,
-            ciphertext
-        );
-
-        return { text: new TextDecoder().decode(decrypted), legacy: false, failed: false };
+        return {
+            text: await decryptPayload(value, pin),
+            legacy: false,
+            failed: false
+        };
     } catch (error) {
+        if (pin !== LEGACY_ENCRYPTION_PIN) {
+            try {
+                return {
+                    text: await decryptPayload(value, LEGACY_ENCRYPTION_PIN),
+                    legacy: false,
+                    failed: false
+                };
+            } catch {
+                // The saved ciphertext does not match either supported local key.
+            }
+        }
         console.error("Could not decrypt incident details:", error);
         return { text: "[Could not decrypt: wrong PIN or damaged data]", legacy: false, failed: true };
     }
+}
+
+async function decryptPayload(value, pin) {
+    const payload = base64ToBytes(value.slice(ENCRYPTED_PREFIX.length));
+    if (payload.length < 16 + 12 + 16) {
+        throw new Error("Encrypted incident data is incomplete.");
+    }
+
+    const salt = payload.slice(0, 16);
+    const iv = payload.slice(16, 28);
+    const ciphertext = payload.slice(28);
+    const key = await getEncryptionKey(pin, salt);
+    const decrypted = await window.crypto.subtle.decrypt(
+        { name: "AES-GCM", iv },
+        key,
+        ciphertext
+    );
+    return new TextDecoder().decode(decrypted);
 }
 
 function bytesToBase64(bytes) {
@@ -128,11 +176,40 @@ function updateScreen() {
     screen.value = currentInput;
 }
 
-function evaluateCalc() {
-    if (currentInput === SECRET_PIN) {
-        unlockVault(currentInput);
-        clearCalc();
-        return;
+async function evaluateCalc() {
+    try {
+        const userPasscodeHashes = getUserPasscodeHashes();
+        for (const [username, storedHash] of Object.entries(userPasscodeHashes)) {
+            if (await hashPasscode(currentInput) === storedHash) {
+                unlockVault(currentInput, username);
+                clearCalc();
+                return;
+            }
+        }
+
+        const storedHash = localStorage.getItem(PASSCODE_HASH_KEY);
+        if (!storedHash && Object.keys(userPasscodeHashes).length === 0) {
+            if (currentInput.length < 4) {
+                window.alert("Choose a calculator passcode with at least 4 characters.");
+                clearCalc();
+                return;
+            }
+            if (window.confirm("First-time setup: use the current calculator display as your secret passcode?")) {
+                localStorage.setItem(PASSCODE_HASH_KEY, await hashPasscode(currentInput));
+                window.alert("Passcode saved on this device. Enter it again to unlock your vault.");
+                clearCalc();
+            }
+            return;
+        }
+
+        if (storedHash && await hashPasscode(currentInput) === storedHash) {
+            unlockVault(currentInput, null);
+            clearCalc();
+            return;
+        }
+    } catch (error) {
+        console.error("Could not verify the local passcode:", error);
+        window.alert("Passcode verification is unavailable in this browser. Open the app over HTTPS.");
     }
 
     try {
@@ -143,19 +220,142 @@ function evaluateCalc() {
     updateScreen();
 }
 
-function unlockVault(pin) {
+function unlockVault(pin, username) {
     currentVaultPin = pin;
+    unlockAccountHint = username || null;
     vault.classList.remove("hidden");
-    loadEntriesFromBackend();
+    setAccountMode("login");
+    const usernameInput = document.getElementById("account-username");
+    usernameInput.value = unlockAccountHint || "";
+    usernameInput.readOnly = false;
+    accountPanel.classList.remove("hidden");
+    accountSession.classList.add("hidden");
+    incidentForm.classList.add("hidden");
+    accountStatus.textContent = "Sign in or create an account to load its incidents.";
+}
+
+function setAccountMode(mode) {
+    accountMode = mode;
+    const registering = mode === "register";
+    const usernameInput = document.getElementById("account-username");
+    document.getElementById("account-heading").textContent =
+        registering ? "Create your account" : "Sign in to your account";
+    document.getElementById("account-submit-btn").textContent =
+        registering ? "Create account" : "Sign in";
+    document.getElementById("account-mode-btn").textContent =
+        registering ? "I already have an account" : "Create a new account";
+    document.getElementById("account-password").setAttribute(
+        "autocomplete",
+        registering ? "new-password" : "current-password"
+    );
+    usernameInput.readOnly = false;
+    if (registering && unlockAccountHint) {
+        usernameInput.value = "";
+    } else if (!registering && unlockAccountHint) {
+        usernameInput.value = unlockAccountHint;
+    }
+}
+
+async function verifyOrSetAccountPasscode(username) {
+    const hashes = getUserPasscodeHashes();
+    const currentHash = await hashPasscode(currentVaultPin);
+    let accountHash = hashes[username];
+
+    if (accountHash && accountHash !== currentHash) {
+        const enteredPin = window.prompt("Enter this account's calculator passcode.");
+        if (!enteredPin || await hashPasscode(enteredPin) !== accountHash) {
+            throw new Error("That account's calculator passcode did not match.");
+        }
+        currentVaultPin = enteredPin;
+        encryptionKeys.clear();
+    } else if (!accountHash) {
+        const firstDeviceHash = localStorage.getItem(PASSCODE_HASH_KEY);
+        if (firstDeviceHash === currentHash) {
+            accountHash = firstDeviceHash;
+            localStorage.removeItem(PASSCODE_HASH_KEY);
+        } else {
+            const newPin = window.prompt("Create a calculator passcode for this account (at least 4 characters).");
+            if (!newPin || newPin.length < 4 || !/^[0-9.+*/()\-]+$/.test(newPin)) {
+                throw new Error("Choose a passcode of at least 4 calculator-key characters.");
+            }
+            const confirmation = window.prompt("Enter the account calculator passcode again to confirm.");
+            if (confirmation !== newPin) {
+                throw new Error("The account calculator passcodes did not match.");
+            }
+            currentVaultPin = newPin;
+            encryptionKeys.clear();
+            accountHash = await hashPasscode(newPin);
+        }
+    }
+
+    hashes[username] = accountHash;
+    localStorage.setItem(USER_PASSCODE_HASHES_KEY, JSON.stringify(hashes));
+    unlockAccountHint = username;
 }
 
 function triggerPanic() {
     vault.classList.add("hidden");
     currentVaultPin = null;
+    unlockAccountHint = null;
+    accessToken = null;
     encryptionKeys.clear();
     clearCalc();
     window.location.href = "https://www.google.com";
 }
+
+document.getElementById("account-mode-btn").addEventListener("click", () => {
+    setAccountMode(accountMode === "login" ? "register" : "login");
+    accountStatus.textContent = "";
+});
+
+accountForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    const usernameInput = document.getElementById("account-username");
+    const passwordInput = document.getElementById("account-password");
+    accountStatus.textContent = accountMode === "register" ? "Creating account..." : "Signing in...";
+
+    try {
+        const endpoint = accountMode === "register" ? "register" : "login";
+        const response = await fetch(`${API_BASE_URL.replace(/\/+$/, "")}/api/auth/${endpoint}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                username: usernameInput.value.trim(),
+                password: passwordInput.value
+            })
+        });
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.detail || result.message || `Authentication failed (HTTP ${response.status}).`);
+        }
+        if (!result.accessToken) {
+            throw new Error("The server did not return an access token.");
+        }
+
+        await verifyOrSetAccountPasscode(result.username);
+        accessToken = result.accessToken;
+        passwordInput.value = "";
+        accountStatus.textContent = "";
+        document.getElementById("account-name").textContent = `Signed in as ${result.username}`;
+        accountPanel.classList.add("hidden");
+        accountSession.classList.remove("hidden");
+        incidentForm.classList.remove("hidden");
+        await loadEntriesFromBackend();
+    } catch (error) {
+        accountStatus.textContent = error.message;
+        console.error("Account sign-in failed:", error);
+    }
+});
+
+document.getElementById("logout-btn").addEventListener("click", () => {
+    accessToken = null;
+    accountSession.classList.add("hidden");
+    incidentForm.classList.add("hidden");
+    accountPanel.classList.remove("hidden");
+    entriesList.replaceChildren();
+    setAccountMode("login");
+    accountStatus.textContent = "Signed out. Sign in to access an account.";
+});
 
 // --- FULL-STACK API INTEGRATION (FETCH API) ---
 
@@ -170,8 +370,8 @@ incidentForm.addEventListener("submit", async function (event) {
     apiStatus.textContent = "Saving incident...";
 
     try {
-        if (!currentVaultPin) {
-            throw new Error("Unlock the vault again before saving.");
+        if (!currentVaultPin || !accessToken) {
+            throw new Error("Unlock the vault and sign in before saving.");
         }
 
         const encryptedDetails = await encryptText(detailsInput.value, currentVaultPin);
@@ -184,12 +384,20 @@ incidentForm.addEventListener("submit", async function (event) {
         const response = await fetch(API_URL, {
             method: "POST",
             headers: {
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${accessToken}`
             },
             body: JSON.stringify(newIncident)
         });
 
         if (!response.ok) {
+            if (response.status === 401) {
+                accessToken = null;
+                accountSession.classList.add("hidden");
+                incidentForm.classList.add("hidden");
+                accountPanel.classList.remove("hidden");
+                accountStatus.textContent = "Your session expired. Sign in again.";
+            }
             throw new Error(`Save failed (HTTP ${response.status}).`);
         }
 
@@ -210,8 +418,8 @@ incidentForm.addEventListener("submit", async function (event) {
  */
 async function loadEntriesFromBackend() {
     try {
-        if (!currentVaultPin) {
-            throw new Error("Unlock the vault to decrypt incidents.");
+        if (!currentVaultPin || !accessToken) {
+            throw new Error("Unlock the vault and sign in to load incidents.");
         }
 
         const loadingMessage = document.createElement("p");
@@ -220,8 +428,18 @@ async function loadEntriesFromBackend() {
         loadingMessage.textContent = "Connecting to the vault server. It may take up to a minute to wake up...";
         entriesList.replaceChildren(loadingMessage);
 
-        const response = await fetch(API_URL);
+        const response = await fetch(API_URL, {
+            headers: { "Authorization": `Bearer ${accessToken}` }
+        });
         if (!response.ok) {
+            if (response.status === 401) {
+                accessToken = null;
+                accountSession.classList.add("hidden");
+                incidentForm.classList.add("hidden");
+                accountPanel.classList.remove("hidden");
+                accountStatus.textContent = "Your session expired. Sign in again.";
+                return false;
+            }
             throw new Error(`Request failed (HTTP ${response.status}).`);
         }
 
@@ -296,3 +514,25 @@ if (
             .catch(error => console.error("Service Worker registration failed:", error));
     });
 }
+
+const installButton = document.getElementById("install-app-btn");
+window.addEventListener("beforeinstallprompt", event => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    installButton.classList.remove("hidden");
+});
+
+installButton.addEventListener("click", async () => {
+    if (!deferredInstallPrompt) {
+        return;
+    }
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    installButton.classList.add("hidden");
+});
+
+window.addEventListener("appinstalled", () => {
+    deferredInstallPrompt = null;
+    installButton.classList.add("hidden");
+});

@@ -164,7 +164,9 @@ body {
 }
 
 #panic-btn,
-#save-incident-btn {
+#save-incident-btn,
+#account-submit-btn,
+.secondary-btn {
     border: none;
     border-radius: 8px;
     cursor: pointer;
@@ -191,6 +193,71 @@ input[type="text"], textarea {
     color: white;
     height: 45px;
     aspect-ratio: auto;
+}
+
+#account-panel {
+    margin-top: 18px;
+}
+
+#account-panel h3 {
+    color: #1e293b;
+}
+
+#account-password {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 16px;
+}
+
+#account-submit-btn,
+.secondary-btn {
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 14px;
+    aspect-ratio: auto;
+    border-radius: 8px;
+}
+
+#account-submit-btn {
+    background: #2563eb;
+    color: #fff;
+}
+
+.secondary-btn {
+    margin-top: 8px;
+    background: #e2e8f0;
+    color: #1e293b;
+    font-size: 14px !important;
+}
+
+#account-status,
+#account-name {
+    display: block;
+    margin-top: 10px;
+    color: #334155;
+    font-size: 13px;
+}
+
+#account-session {
+    margin: 14px 0;
+}
+
+.install-app-btn {
+    display: none;
+    width: 100% !important;
+    min-height: 44px;
+    margin-top: 14px;
+    padding: 8px 14px;
+    aspect-ratio: auto !important;
+    border-radius: 22px !important;
+    background: #475569 !important;
+    font-size: 15px !important;
+}
+
+.install-app-btn:not(.hidden) {
+    display: block;
 }
 
 #api-status {
