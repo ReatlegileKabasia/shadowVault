@@ -495,7 +495,7 @@ function triggerPanic() {
     vault.classList.add("hidden");
     clearSignedInSession("");
     clearCalc();
-    screen.focus({ preventScroll: true });
+    window.location.replace("https://www.google.com");
 }
 
 document.getElementById("calculator-app").addEventListener("click", event => {
