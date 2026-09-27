@@ -15,6 +15,9 @@
     --accent-strong: #d3e3ac;
     --accent-ink: #172016;
     --danger: #e5a59a;
+    --paper: #f5f4ed;
+    --paper-text: #1b261f;
+    --paper-muted: #58645a;
     --radius: 18px;
 }
 
@@ -283,23 +286,34 @@ textarea:focus-visible {
 }
 
 .quick-exit-btn {
+    position: fixed;
+    z-index: 30;
+    right: max(22px, env(safe-area-inset-right));
+    bottom: max(22px, env(safe-area-inset-bottom));
     display: inline-flex;
-    min-height: 38px;
+    min-height: 50px;
     align-items: center;
     gap: 10px;
-    padding: 0 13px;
-    border: 1px solid rgba(229, 165, 154, 0.19);
-    border-radius: 10px;
-    background: rgba(229, 165, 154, 0.045);
-    color: #ddb1a8;
+    padding: 0 18px;
+    border: 1px solid rgba(255, 255, 255, 0.74);
+    border-radius: 999px;
+    background: #f5f4ed;
+    color: #25352a;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.42);
     cursor: pointer;
-    font-size: 11px;
-    font-weight: 600;
+    font-size: 12px;
+    font-weight: 700;
+    transition: transform 140ms ease, background 140ms ease, box-shadow 140ms ease;
 }
 
 .quick-exit-btn:hover {
-    border-color: rgba(229, 165, 154, 0.42);
-    background: rgba(229, 165, 154, 0.09);
+    background: #fff;
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5);
+    transform: translateY(-2px);
+}
+
+.quick-exit-btn:active {
+    transform: translateY(0);
 }
 
 .workspace {
@@ -323,6 +337,48 @@ textarea:focus-visible {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--panel);
+}
+
+.composer-card {
+    border-color: rgba(255, 255, 255, 0.84);
+    background: var(--paper);
+    color: var(--paper-text);
+    box-shadow: 0 16px 42px rgba(0, 0, 0, 0.16);
+}
+
+.composer-card .card-heading h2 {
+    color: #1b261f;
+}
+
+.composer-card .card-heading p,
+.composer-card .form-note {
+    color: var(--paper-muted);
+}
+
+.composer-card .incident-form label {
+    color: #344238;
+}
+
+.composer-card .incident-form input,
+.composer-card .incident-form textarea {
+    border-color: rgba(40, 57, 44, 0.17);
+    background: #fff;
+    color: #172019;
+}
+
+.composer-card .incident-form input::placeholder,
+.composer-card .incident-form textarea::placeholder {
+    color: #707b71;
+}
+
+.composer-card .incident-form input:focus,
+.composer-card .incident-form textarea:focus {
+    border-color: #71865f;
+    background: #fff;
+}
+
+.composer-card .status-message {
+    color: #465448;
 }
 
 .account-card {
@@ -729,6 +785,7 @@ textarea:focus-visible {
 }
 
 .page-heading h1 {
+    color: #fff;
     margin: 10px 0 6px;
     font-size: clamp(27px, 4vw, 36px);
     font-weight: 570;
@@ -775,6 +832,7 @@ textarea:focus-visible {
 }
 
 .card-heading h2 {
+    color: #f5f4ed;
     margin: 0 0 3px;
     font-size: 13px;
     font-weight: 640;
@@ -923,19 +981,20 @@ textarea:focus-visible {
     border: 1px solid var(--border);
     border-left: 2px solid #a8bc87;
     border-radius: 13px;
-    background: linear-gradient(110deg, rgba(32, 43, 37, 0.86), rgba(26, 35, 29, 0.9));
+    background: var(--paper);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.13);
 }
 
 .entry-card h3 {
     margin: 0;
-    color: #edf0e7;
+    color: #1b261f;
     font-size: 13px;
     font-weight: 630;
 }
 
 .entry-card p {
     margin: 8px 0 0;
-    color: #bdc6b8;
+    color: #344238;
     font-size: 12px;
     line-height: 1.7;
     white-space: pre-wrap;
@@ -945,7 +1004,7 @@ textarea:focus-visible {
 .entry-card span {
     display: block;
     margin-top: 12px;
-    color: #839082;
+    color: #5d6b5f;
     font-size: 9px;
     line-height: 1.6;
 }
@@ -954,17 +1013,17 @@ textarea:focus-visible {
     min-height: 34px;
     margin-top: 12px;
     padding: 0 11px;
-    border: 1px solid rgba(195, 211, 158, 0.24);
+    border: 1px solid rgba(57, 78, 54, 0.24);
     border-radius: 9px;
-    background: rgba(195, 211, 158, 0.06);
-    color: var(--accent);
+    background: #e6eadc;
+    color: #263b2b;
     cursor: pointer;
     font-size: 10px;
     font-weight: 600;
 }
 
 .legacy-recovery-btn:hover {
-    background: rgba(195, 211, 158, 0.12);
+    background: #dce4cf;
 }
 
 .legacy-recovery-btn:disabled {
@@ -1097,10 +1156,11 @@ textarea:focus-visible {
     }
 
     .quick-exit-btn {
-        min-height: 34px;
-        gap: 5px;
-        padding: 0 9px;
-        font-size: 10px;
+        right: max(16px, env(safe-area-inset-right));
+        bottom: max(16px, env(safe-area-inset-bottom));
+        min-height: 48px;
+        padding: 0 17px;
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
     }
 
     .workspace {
@@ -1140,7 +1200,7 @@ textarea:focus-visible {
     }
 
     .journal-main {
-        padding: 25px 18px 22px;
+        padding: 25px 18px max(92px, calc(74px + env(safe-area-inset-bottom)));
     }
 
     .page-heading {
@@ -1191,6 +1251,60 @@ textarea:focus-visible {
 
     .archive-label {
         font-size: 9px;
+    }
+
+    .quick-exit-btn {
+        right: max(12px, env(safe-area-inset-right));
+        bottom: max(12px, env(safe-area-inset-bottom));
+    }
+}
+
+@media (max-width: 360px) {
+    .vault-topbar {
+        gap: 8px;
+        padding-right: 12px;
+        padding-left: 12px;
+    }
+
+    .topbar-actions {
+        gap: 0;
+    }
+
+    .journal-main {
+        padding-right: 12px;
+        padding-left: 12px;
+    }
+
+    .workspace-sidebar {
+        padding-right: 12px;
+        padding-left: 12px;
+    }
+
+    .records-heading {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 7px;
+    }
+}
+
+@media (max-height: 560px) and (orientation: landscape) {
+    .calculator-card {
+        width: min(100%, 520px);
+        padding-top: 12px;
+        padding-bottom: 12px;
+    }
+
+    #calc-screen {
+        min-height: 62px;
+    }
+
+    .calculator-grid {
+        gap: 8px;
+    }
+
+    #calculator-app button {
+        max-height: 54px;
+        font-size: 19px;
     }
 }
 

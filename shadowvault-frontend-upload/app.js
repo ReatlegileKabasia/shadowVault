@@ -35,6 +35,49 @@ const privacySafetyDialog = document.getElementById("privacy-safety-dialog");
 const deleteAccountDialog = document.getElementById("delete-account-dialog");
 const deleteAccountForm = document.getElementById("delete-account-form");
 
+function userFriendlyError(error, fallback = "Please try again in a moment.") {
+    const message = error instanceof Error ? error.message : "";
+    const statusMatch = message.match(/\bHTTP\s+(\d{3})\b/i);
+    if (statusMatch) {
+        const status = Number(statusMatch[1]);
+        if (status === 401) {
+            return "Your sign-in has expired. Please sign in again.";
+        }
+        if (status === 400) {
+            return "Please check your username and password, then try again.";
+        }
+        if (status === 409) {
+            return "That username is already in use. Try another one.";
+        }
+        if (status === 403) {
+            return "We couldn't verify your password. Check it and try again.";
+        }
+        if (status === 404) {
+            return "We couldn't find that entry. Refresh your archive and try again.";
+        }
+        if (status === 413) {
+            return "This request is too large. Try with fewer entries.";
+        }
+        if (status === 429) {
+            return "Too many attempts. Please wait a minute and try again.";
+        }
+        if (status >= 500) {
+            return "ShadowVault is having trouble right now. Please wait a moment and try again.";
+        }
+        return "We couldn't complete that request. Check the information and try again.";
+    }
+    if (
+        error instanceof TypeError ||
+        /failed to fetch|networkerror|load failed/i.test(message)
+    ) {
+        return "We couldn't connect to ShadowVault. Check your internet connection and try again.";
+    }
+    if (error?.name === "SyntaxError") {
+        return fallback;
+    }
+    return message || fallback;
+}
+
 async function derivePasscodeHash(passcode, salt, iterations) {
     const material = await window.crypto.subtle.importKey(
         "raw",
@@ -165,7 +208,7 @@ async function decryptText(value, pin) {
         };
     } catch (error) {
         console.error("Could not decrypt incident details:", error);
-        return { text: "[Could not decrypt: wrong PIN or damaged data]", legacy: false, failed: true };
+        return { text: "This entry couldn't be opened with the current passcode.", legacy: false, failed: true };
     }
 }
 
@@ -494,7 +537,7 @@ accountForm.addEventListener("submit", async event => {
         });
         const result = await response.json();
         if (!response.ok) {
-            throw new Error(result.detail || result.message || `Authentication failed (HTTP ${response.status}).`);
+            throw new Error(`HTTP ${response.status}`);
         }
         if (!result.accessToken) {
             throw new Error("The server did not return an access token.");
@@ -511,7 +554,9 @@ accountForm.addEventListener("submit", async event => {
         incidentForm.classList.remove("hidden");
         await loadEntriesFromBackend();
     } catch (error) {
-        accountStatus.textContent = error.message;
+        accountStatus.textContent = /HTTP 401/.test(error.message)
+            ? "That username or password doesn't match. Check your details and try again."
+            : userFriendlyError(error, "We couldn't sign you in. Please try again.");
         console.error("Account sign-in failed:", error);
     }
 });
@@ -547,7 +592,7 @@ document.getElementById("export-data-btn").addEventListener("click", async () =>
             if (response.status === 401) {
                 clearSignedInSession("Your session expired. Sign in again.");
             }
-            throw new Error(`Export request failed (HTTP ${response.status}).`);
+            throw new Error(`HTTP ${response.status}`);
         }
 
         const records = await response.json();
@@ -585,7 +630,7 @@ document.getElementById("export-data-btn").addEventListener("click", async () =>
         window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
         apiStatus.textContent = "Export downloaded. Store it securely; its entry details are readable.";
     } catch (error) {
-        apiStatus.textContent = `Could not export entries: ${error.message}`;
+        apiStatus.textContent = `Couldn't export your entries. ${userFriendlyError(error, "Please try again.")}`;
         console.error("Could not export account entries:", error);
     }
 });
@@ -628,14 +673,7 @@ deleteAccountForm.addEventListener("submit", async event => {
             body: JSON.stringify({ password: passwordInput.value })
         });
         if (!response.ok) {
-            let detail = `Account deletion failed (HTTP ${response.status}).`;
-            try {
-                const result = await response.json();
-                detail = result.detail || result.message || detail;
-            } catch {
-                // Keep the HTTP error when the server response has no JSON body.
-            }
-            throw new Error(detail);
+            throw new Error(`HTTP ${response.status}`);
         }
 
         const username = signedInUsername;
@@ -670,7 +708,7 @@ deleteAccountForm.addEventListener("submit", async event => {
             "Account and entries were deleted from the active app database. Hosting backups and operational records may follow separate retention." +
             localStorageWarning;
     } catch (error) {
-        status.textContent = error.message;
+        status.textContent = userFriendlyError(error, "We couldn't delete your account. Please try again.");
         console.error("Could not delete the account:", error);
     } finally {
         submitButton.disabled = false;
@@ -733,7 +771,7 @@ passcodeForm.addEventListener("submit", async event => {
                 headers: { Authorization: `Bearer ${accessToken}` }
             });
             if (!loadResponse.ok) {
-                throw new Error(`Could not load the archive (HTTP ${loadResponse.status}).`);
+                throw new Error(`HTTP ${loadResponse.status}`);
             }
             const entries = await loadResponse.json();
             if (!Array.isArray(entries)) {
@@ -766,7 +804,7 @@ passcodeForm.addEventListener("submit", async event => {
                     body: JSON.stringify({ entries: rekeyedEntries })
                 });
                 if (!updateResponse.ok) {
-                    throw new Error(`The server could not update your encrypted archive (HTTP ${updateResponse.status}).`);
+                    throw new Error(`HTTP ${updateResponse.status}`);
                 }
                 const result = await updateResponse.json();
                 if (result.updated !== rekeyedEntries.length) {
@@ -788,7 +826,7 @@ passcodeForm.addEventListener("submit", async event => {
             : "Passcode changed and archive re-encrypted. Use the new passcode on your other devices too.";
         await loadEntriesFromBackend();
     } catch (error) {
-        passcodeStatus.textContent = error.message;
+        passcodeStatus.textContent = userFriendlyError(error, "We couldn't change your passcode. Your saved entries were not changed.");
         console.error("Could not change the calculator passcode:", error);
     } finally {
         submitButton.disabled = false;
@@ -832,7 +870,7 @@ incidentForm.addEventListener("submit", async function (event) {
             if (response.status === 401) {
                 clearSignedInSession("Your session expired. Sign in again.");
             }
-            throw new Error(`Save failed (HTTP ${response.status}).`);
+            throw new Error(`HTTP ${response.status}`);
         }
 
         titleInput.value = "";
@@ -842,7 +880,7 @@ incidentForm.addEventListener("submit", async function (event) {
             ? "Incident saved."
             : "Incident saved, but the incident list could not be refreshed.";
     } catch (error) {
-        apiStatus.textContent = `Could not save incident: ${error.message}`;
+        apiStatus.textContent = `Couldn't save your entry. ${userFriendlyError(error, "Please try again.")}`;
         console.error("Could not save incident:", error);
     }
 });
@@ -870,7 +908,7 @@ async function loadEntriesFromBackend() {
                 clearSignedInSession("Your session expired. Sign in again.");
                 return false;
             }
-            throw new Error(`Request failed (HTTP ${response.status}).`);
+            throw new Error(`HTTP ${response.status}`);
         }
 
         const entries = await response.json();
@@ -885,7 +923,7 @@ async function loadEntriesFromBackend() {
         entriesList.replaceChildren();
         const message = document.createElement("p");
         message.className = "empty-state";
-        message.textContent = `Could not load incidents: ${error.message}`;
+        message.textContent = `Couldn't load your entries. ${userFriendlyError(error, "Please try again.")}`;
         entriesList.appendChild(message);
         return false;
     }
@@ -930,7 +968,7 @@ async function renderEntries(entries, pin) {
         details.textContent = result.text;
         const metadata = document.createElement("span");
         const encryptionLabel = result.failed
-            ? "Decryption failed"
+            ? "Earlier passcode may be needed"
             : result.legacy
                 ? "Legacy, unencrypted"
                 : "Encrypted";
@@ -963,14 +1001,14 @@ async function renderEntries(entries, pin) {
                         body: JSON.stringify({ details: encrypted })
                     });
                     if (!response.ok) {
-                        throw new Error(`The recovered entry could not be saved (HTTP ${response.status}).`);
+                        throw new Error(`HTTP ${response.status}`);
                     }
                     details.textContent = recovered;
                     metadata.textContent = `Database Record ID: #${item.id} | ${item.timestamp || ""} | Re-encrypted with the current passcode`;
                     recoverButton.remove();
                 } catch (error) {
                     console.error("Could not decrypt an entry with the supplied earlier passcode:", error);
-                    details.textContent = `Could not recover this entry: ${error.message} Its saved data was not changed.`;
+                    details.textContent = "We couldn't open the entry with that passcode. Check the original passcode and try again. Your saved entry hasn't changed.";
                     recoverButton.disabled = false;
                 }
             });
