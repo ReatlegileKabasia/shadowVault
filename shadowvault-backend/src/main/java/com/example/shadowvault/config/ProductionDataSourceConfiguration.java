@@ -58,7 +58,7 @@ public class ProductionDataSourceConfiguration {
         try {
             if (value.startsWith("jdbc:postgresql://")) {
                 URI uri = URI.create(value.substring("jdbc:".length()));
-                validatePostgresUri(uri, configuredUrl);
+                validatePostgresUri(uri);
                 return new DatabaseSettings(value, null, null);
             }
 
@@ -67,7 +67,7 @@ public class ProductionDataSourceConfiguration {
                     && !"postgresql".equalsIgnoreCase(uri.getScheme())) {
                 throw invalidUrl();
             }
-            validatePostgresUri(uri, configuredUrl);
+            validatePostgresUri(uri);
 
             String rawUserInfo = uri.getRawUserInfo();
             String username = null;
@@ -92,7 +92,7 @@ public class ProductionDataSourceConfiguration {
         }
     }
 
-    private static void validatePostgresUri(URI uri, String configuredUrl) {
+    private static void validatePostgresUri(URI uri) {
         if (uri.getHost() == null || uri.getHost().isBlank()
                 || uri.getPort() == 0
                 || uri.getPort() > 65535

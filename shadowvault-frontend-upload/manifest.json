@@ -1,6 +1,6 @@
 {
-  "short_name": "Quick Calc",
-  "name": "Quick Calculator Utility",
+  "short_name": "ShadowVault",
+  "name": "ShadowVault Private Journal",
   "icons": [
     {
       "src": "icon.svg",
@@ -11,7 +11,7 @@
   ],
   "start_url": "./index.html",
   "scope": "./",
-  "background_color": "#1e293b",
-  "theme_color": "#1e293b",
+  "background_color": "#111814",
+  "theme_color": "#101815",
   "display": "standalone"
 }

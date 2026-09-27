@@ -159,7 +159,7 @@ function base64ToBytes(value) {
 
 // --- CALCULATOR & DECOY LOGIC ---
 function appendCalc(value) {
-    if (currentInput === "0") {
+    if (currentInput === "0" || currentInput === "Error") {
         currentInput = value;
     } else {
         currentInput += value;
@@ -174,6 +174,82 @@ function clearCalc() {
 
 function updateScreen() {
     screen.value = currentInput;
+}
+
+function calculateExpression(expression) {
+    let position = 0;
+
+    function skipWhitespace() {
+        while (/\s/.test(expression[position] || "")) {
+            position += 1;
+        }
+    }
+
+    function parseNumber() {
+        skipWhitespace();
+        const match = expression.slice(position).match(/^(?:\d+(?:\.\d*)?|\.\d+)/);
+        if (!match) {
+            throw new Error("Invalid calculation.");
+        }
+        position += match[0].length;
+        return Number(match[0]);
+    }
+
+    function parseFactor() {
+        skipWhitespace();
+        const operator = expression[position];
+        if (operator === "+" || operator === "-") {
+            position += 1;
+            const value = parseFactor();
+            return operator === "-" ? -value : value;
+        }
+        if (expression[position] === "(") {
+            position += 1;
+            const value = parseSum();
+            skipWhitespace();
+            if (expression[position] !== ")") {
+                throw new Error("Invalid calculation.");
+            }
+            position += 1;
+            return value;
+        }
+        return parseNumber();
+    }
+
+    function parseProduct() {
+        let value = parseFactor();
+        while (true) {
+            skipWhitespace();
+            const operator = expression[position];
+            if (operator !== "*" && operator !== "/") {
+                return value;
+            }
+            position += 1;
+            const right = parseFactor();
+            value = operator === "*" ? value * right : value / right;
+        }
+    }
+
+    function parseSum() {
+        let value = parseProduct();
+        while (true) {
+            skipWhitespace();
+            const operator = expression[position];
+            if (operator !== "+" && operator !== "-") {
+                return value;
+            }
+            position += 1;
+            const right = parseProduct();
+            value = operator === "+" ? value + right : value - right;
+        }
+    }
+
+    const result = parseSum();
+    skipWhitespace();
+    if (position !== expression.length || !Number.isFinite(result)) {
+        throw new Error("Invalid calculation.");
+    }
+    return result;
 }
 
 async function evaluateCalc() {
@@ -213,8 +289,8 @@ async function evaluateCalc() {
     }
 
     try {
-        currentInput = eval(currentInput).toString();
-    } catch (error) {
+        currentInput = calculateExpression(currentInput).toString();
+    } catch {
         currentInput = "Error";
     }
     updateScreen();
@@ -423,7 +499,7 @@ async function loadEntriesFromBackend() {
         }
 
         const loadingMessage = document.createElement("p");
-        loadingMessage.className = "empty-msg loading-msg";
+        loadingMessage.className = "empty-state loading-msg";
         loadingMessage.setAttribute("role", "status");
         loadingMessage.textContent = "Connecting to the vault server. It may take up to a minute to wake up...";
         entriesList.replaceChildren(loadingMessage);
@@ -454,7 +530,7 @@ async function loadEntriesFromBackend() {
         console.error("Error connecting to server:", error);
         entriesList.replaceChildren();
         const message = document.createElement("p");
-        message.className = "empty-msg";
+        message.className = "empty-state";
         message.textContent = `Could not load incidents: ${error.message}`;
         entriesList.appendChild(message);
         return false;
@@ -468,9 +544,17 @@ async function renderEntries(entries, pin) {
     entriesList.replaceChildren();
 
     if (entries.length === 0) {
-        const message = document.createElement("p");
-        message.className = "empty-msg";
-        message.textContent = "No incidents recorded yet.";
+        const message = document.createElement("div");
+        message.className = "empty-state";
+        const icon = document.createElement("span");
+        icon.className = "empty-state-icon";
+        icon.setAttribute("aria-hidden", "true");
+        icon.textContent = "✦";
+        const title = document.createElement("strong");
+        title.textContent = "Your archive is ready";
+        const description = document.createElement("span");
+        description.textContent = "Your saved entries will appear here.";
+        message.append(icon, title, description);
         entriesList.appendChild(message);
         return;
     }
@@ -486,7 +570,7 @@ async function renderEntries(entries, pin) {
         const card = document.createElement("div");
         card.className = "entry-card";
 
-        const title = document.createElement("h4");
+        const title = document.createElement("h3");
         title.textContent = item.title || "";
         const details = document.createElement("p");
         details.textContent = result.text;
