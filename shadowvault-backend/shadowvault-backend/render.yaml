@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: shadowvault-backend
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: SPRING_DATASOURCE_URL
+        sync: false
+      - key: SPRING_DATASOURCE_USERNAME
+        sync: false
+      - key: SPRING_DATASOURCE_PASSWORD
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET_BASE64
+        sync: false
+      - key: APP_CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: AUTH_REQUESTS_PER_MINUTE
+        value: "20"
+      - key: MAX_REQUEST_BODY_BYTES
+        value: "1048576"
+      - key: MAX_REKEY_BODY_BYTES
+        value: "16777216"
