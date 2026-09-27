@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="description" content="A private, encrypted incident journal for your personal records.">
     <meta name="theme-color" content="#101815">
+    <meta name="referrer" content="no-referrer">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://shadowvault-backend-ap1n.onrender.com; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="ShadowVault">
@@ -22,25 +24,29 @@
         <label class="visually-hidden" for="calc-screen">Calculator display</label>
         <input type="text" id="calc-screen" readonly value="0" inputmode="none" aria-live="polite">
         <div class="calculator-grid">
-            <button type="button" onclick="clearCalc()" class="btn-control" aria-label="Clear">C</button>
-            <button type="button" onclick="appendCalc('/')" class="btn-operator" aria-label="Divide">÷</button>
-            <button type="button" onclick="appendCalc('*')" class="btn-operator" aria-label="Multiply">×</button>
-            <button type="button" onclick="appendCalc('-')" class="btn-operator" aria-label="Subtract">−</button>
+            <button type="button" data-calc="clear" class="btn-control" aria-label="Clear">C</button>
+            <button type="button" data-append="/" class="btn-operator" aria-label="Divide">÷</button>
+            <button type="button" data-append="*" class="btn-operator" aria-label="Multiply">×</button>
+            <button type="button" data-append="-" class="btn-operator" aria-label="Subtract">−</button>
 
-            <button type="button" onclick="appendCalc('7')">7</button>
-            <button type="button" onclick="appendCalc('8')">8</button>
-            <button type="button" onclick="appendCalc('9')">9</button>
-            <button type="button" onclick="appendCalc('+')" class="btn-operator" aria-label="Add">+</button>
+            <button type="button" data-append="7">7</button>
+            <button type="button" data-append="8">8</button>
+            <button type="button" data-append="9">9</button>
+            <button type="button" data-append="+" class="btn-operator" aria-label="Add">+</button>
 
-            <button type="button" onclick="appendCalc('4')">4</button>
-            <button type="button" onclick="appendCalc('5')">5</button>
-            <button type="button" onclick="appendCalc('6')">6</button>
-            <button type="button" onclick="evaluateCalc()" class="btn-equals" aria-label="Equals">=</button>
+            <button type="button" data-append="4">4</button>
+            <button type="button" data-append="5">5</button>
+            <button type="button" data-append="6">6</button>
+            <button type="button" data-calc="evaluate" class="btn-equals" aria-label="Equals">=</button>
 
-            <button type="button" onclick="appendCalc('1')">1</button>
-            <button type="button" onclick="appendCalc('2')">2</button>
-            <button type="button" onclick="appendCalc('3')">3</button>
-            <button type="button" onclick="appendCalc('0')">0</button>
+            <button type="button" data-append="1">1</button>
+            <button type="button" data-append="2">2</button>
+            <button type="button" data-append="3">3</button>
+            <button type="button" data-append="0">0</button>
+
+            <button type="button" data-append="(" aria-label="Open parenthesis">(</button>
+            <button type="button" data-append=")" aria-label="Close parenthesis">)</button>
+            <button type="button" data-append=".">.</button>
         </div>
         <button id="install-app-btn" class="install-app-btn hidden" type="button">Install ShadowVault</button>
     </main>
@@ -62,7 +68,7 @@
                 </a>
                 <div class="topbar-actions">
                     <span class="secure-badge"><span aria-hidden="true"></span> Private workspace</span>
-                    <button id="panic-btn" class="quick-exit-btn" type="button" onclick="triggerPanic()" aria-label="Quick exit and close the vault">Quick exit <span aria-hidden="true">↗</span></button>
+                    <button id="panic-btn" class="quick-exit-btn" type="button" aria-label="Quick exit and close the vault">Quick exit <span aria-hidden="true">↗</span></button>
                 </div>
             </header>
 
@@ -91,6 +97,7 @@
                                 </svg>
                             </span>
                             <span id="account-name" class="account-name"></span>
+                            <button type="button" id="change-passcode-btn" class="text-btn">Change local passcode</button>
                             <button type="button" id="logout-btn" class="text-btn">Switch account</button>
                         </div>
                     </section>
@@ -170,6 +177,27 @@
             </div>
         </div>
     </section>
+
+    <dialog id="change-passcode-dialog" class="passcode-dialog" aria-labelledby="passcode-dialog-heading">
+        <form id="change-passcode-form" class="passcode-form">
+            <span class="section-eyebrow">DEVICE SECURITY</span>
+            <h2 id="passcode-dialog-heading">Change calculator passcode</h2>
+            <p>Your saved entry details will be re-encrypted with your new passcode before this change is saved. Use calculator keys only; expressions such as <strong>1234+5678</strong> work too.</p>
+            <label for="current-passcode">Current passcode</label>
+            <input id="current-passcode" type="password" autocomplete="current-password" minlength="4" maxlength="64" required>
+            <label for="new-passcode">New passcode</label>
+            <input id="new-passcode" type="text" inputmode="text" autocapitalize="off" spellcheck="false" autocomplete="new-password" minlength="8" maxlength="64" pattern="[0-9.+*/()\-]{8,64}" aria-describedby="passcode-hint" required>
+            <span id="passcode-hint" class="passcode-hint">Use at least 8 numbers or calculator symbols, for example 1234+5678.</span>
+            <label for="confirm-passcode">Confirm new passcode</label>
+            <input id="confirm-passcode" type="text" inputmode="text" autocapitalize="off" spellcheck="false" autocomplete="new-password" minlength="8" maxlength="64" pattern="[0-9.+*/()\-]{8,64}" required>
+            <label class="archive-sync-option"><input id="archive-already-rekeyed" type="checkbox"> This archive was already re-encrypted on another device; only update this device's calculator passcode.</label>
+            <p id="passcode-status" class="status-message" role="status" aria-live="polite"></p>
+            <div class="passcode-actions">
+                <button type="button" id="cancel-passcode-btn" class="secondary-action-btn">Cancel</button>
+                <button type="submit" id="save-passcode-btn" class="primary-btn">Re-encrypt and save</button>
+            </div>
+        </form>
+    </dialog>
 
     <script src="config.js"></script>
     <script src="app.js"></script>

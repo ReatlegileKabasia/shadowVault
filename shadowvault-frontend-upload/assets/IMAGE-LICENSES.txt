@@ -1,0 +1,10 @@
+Images bundled with ShadowVault:
+
+- forest-canopy.jpg
+  Source: https://images.unsplash.com/photo-1448375240586-882707db888b
+- forest-light.jpg
+  Source: https://images.unsplash.com/photo-1470252649378-9c29740c9fa8
+
+Both images are distributed under the Unsplash License, which permits free
+commercial use and modification. Do not redistribute the images as standalone
+stock assets. License: https://unsplash.com/license

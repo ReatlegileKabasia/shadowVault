@@ -14,6 +14,8 @@ import java.util.regex.Pattern;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -40,8 +42,10 @@ class ShadowvaultApplicationTests {
 	}
 
 	@Test
-	void incidentsRequireAnAccessToken() throws Exception {
+	void privateRoutesRequireAnAccessToken() throws Exception {
 		mockMvc.perform(get("/api/incidents"))
+				.andExpect(status().isUnauthorized());
+		mockMvc.perform(get("/h2-console"))
 				.andExpect(status().isUnauthorized());
 	}
 
@@ -49,7 +53,107 @@ class ShadowvaultApplicationTests {
 	void healthCheckDoesNotRequireAuthentication() throws Exception {
 		mockMvc.perform(get("/health"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.status").value("ok"));
+				.andExpect(jsonPath("$.status").value("ok"))
+				.andExpect(header().string("X-Content-Type-Options", "nosniff"))
+				.andExpect(header().string("X-Frame-Options", "DENY"))
+				.andExpect(header().string("Permissions-Policy", "camera=(), microphone=(), geolocation=()"))
+				.andExpect(header().string("Referrer-Policy", "no-referrer"));
+	}
+
+	@Test
+	void rekeyCannotUpdateAnotherUsersIncidents() throws Exception {
+		String firstToken = registerAndGetToken(firstUsername);
+		String secondToken = registerAndGetToken(secondUsername);
+		String incidentResponse = mockMvc.perform(post("/api/incidents")
+						.header("Authorization", "Bearer " + firstToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"title":"Private","details":"original-ciphertext","timestamp":"today"}
+								"""))
+				.andExpect(status().isOk())
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+		Matcher idMatcher = Pattern.compile("\"id\":(\\d+)").matcher(incidentResponse);
+		if (!idMatcher.find()) {
+			throw new AssertionError("Incident response did not contain an ID.");
+		}
+		String incidentId = idMatcher.group(1);
+
+		mockMvc.perform(put("/api/incidents/" + incidentId)
+						.header("Authorization", "Bearer " + firstToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"details":"owner-updated-via-put"}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.details").value("owner-updated-via-put"));
+
+		mockMvc.perform(put("/api/incidents/" + incidentId)
+						.header("Authorization", "Bearer " + secondToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"details":"attacker-ciphertext"}
+								"""))
+				.andExpect(status().isNotFound());
+
+		mockMvc.perform(post("/api/incidents/rekey")
+						.header("Authorization", "Bearer " + firstToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"entries":[{"id":%s,"details":"owner-updated-ciphertext"}]}
+								""".formatted(incidentId)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.updated").value(1));
+
+		mockMvc.perform(post("/api/incidents/rekey")
+						.header("Authorization", "Bearer " + secondToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"entries":[{"id":%s,"details":"attacker-ciphertext"}]}
+								""".formatted(incidentId)))
+				.andExpect(status().isBadRequest());
+
+		mockMvc.perform(get("/api/incidents")
+						.header("Authorization", "Bearer " + firstToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].details").value("owner-updated-ciphertext"));
+	}
+
+	@Test
+	void authenticationRequestsAreRateLimitedByClientAddress() throws Exception {
+		for (int attempt = 0; attempt < 20; attempt++) {
+			mockMvc.perform(post("/api/auth/login")
+							.with(request -> {
+								request.setRemoteAddr("198.51.100.29");
+								return request;
+							})
+							.contentType(MediaType.APPLICATION_JSON)
+							.content("""
+									{"username":"unknown-user","password":"correct-horse-battery"}
+									"""))
+					.andExpect(status().isUnauthorized());
+		}
+
+		mockMvc.perform(post("/api/auth/login")
+						.with(request -> {
+							request.setRemoteAddr("198.51.100.29");
+							return request;
+						})
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"username":"unknown-user","password":"correct-horse-battery"}
+								"""))
+				.andExpect(status().isTooManyRequests())
+				.andExpect(header().exists("Retry-After"));
+	}
+
+	@Test
+	void oversizedAuthenticationRequestIsRejectedBeforeJsonParsing() throws Exception {
+		mockMvc.perform(post("/api/auth/login")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("x".repeat(1_048_577)))
+				.andExpect(status().is(413));
 	}
 
 	@Test

@@ -1,4 +1,4 @@
-const CACHE_NAME = "shadowvault-shell-v3";
+const CACHE_NAME = "shadowvault-shell-v4";
 const APP_SHELL = [
     "./",
     "./index.html",
@@ -6,7 +6,9 @@ const APP_SHELL = [
     "./styleVault.css",
     "./app.js",
     "./manifest.json",
-    "./icon.svg"
+    "./icon.svg",
+    "./assets/forest-canopy.jpg",
+    "./assets/forest-light.jpg"
 ];
 
 self.addEventListener("install", event => {

@@ -5,8 +5,10 @@ const API_BASE_URL = window.SHADOWVAULT_API_BASE_URL || `${API_PROTOCOL}//${API_
 const API_URL = `${API_BASE_URL.replace(/\/+$/, "")}/api/incidents`;
 const PASSCODE_HASH_KEY = "vault_pin_hash";
 const USER_PASSCODE_HASHES_KEY = "vault_user_pin_hashes";
-const ENCRYPTED_PREFIX = "sv1:";
-const LEGACY_ENCRYPTION_PIN = "1234";
+const ENCRYPTED_PREFIX = "sv2:";
+const LEGACY_ENCRYPTION_PREFIX = "sv1:";
+const PASSCODE_HASH_PREFIX = "pbkdf2-sha256$";
+const PASSCODE_HASH_ITERATIONS = 310000;
 const encryptionKeys = new Map();
 let currentInput = "0";
 let currentVaultPin = null;
@@ -25,33 +27,81 @@ const accountForm = document.getElementById("account-form");
 const accountPanel = document.getElementById("account-panel");
 const accountSession = document.getElementById("account-session");
 const accountStatus = document.getElementById("account-status");
+const passcodeDialog = document.getElementById("change-passcode-dialog");
+const passcodeForm = document.getElementById("change-passcode-form");
+const passcodeStatus = document.getElementById("passcode-status");
+
+async function derivePasscodeHash(passcode, salt, iterations) {
+    const material = await window.crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(passcode),
+        "PBKDF2",
+        false,
+        ["deriveBits"]
+    );
+    return new Uint8Array(await window.crypto.subtle.deriveBits(
+        { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
+        material,
+        256
+    ));
+}
 
 async function hashPasscode(passcode) {
-    const data = new TextEncoder().encode(passcode);
-    const hashBuffer = await window.crypto.subtle.digest("SHA-256", data);
-    return Array.from(new Uint8Array(hashBuffer))
+    const salt = window.crypto.getRandomValues(new Uint8Array(16));
+    const hash = await derivePasscodeHash(passcode, salt, PASSCODE_HASH_ITERATIONS);
+    return `${PASSCODE_HASH_PREFIX}${PASSCODE_HASH_ITERATIONS}$${bytesToBase64(salt)}$${bytesToBase64(hash)}`;
+}
+
+async function verifyPasscode(passcode, storedHash) {
+    if (typeof storedHash !== "string" || !storedHash) {
+        return false;
+    }
+    if (storedHash.startsWith(PASSCODE_HASH_PREFIX)) {
+        const [, iterationText, saltText, expectedText, ...extra] = storedHash.split("$");
+        const iterations = Number(iterationText);
+        if (extra.length || !Number.isInteger(iterations) || iterations < 100000 || iterations > 1000000) {
+            throw new Error("Saved passcode settings are invalid. Clear this app's local data to reset them.");
+        }
+        const expected = base64ToBytes(expectedText || "");
+        const actual = await derivePasscodeHash(passcode, base64ToBytes(saltText || ""), iterations);
+        if (actual.length !== expected.length) {
+            return false;
+        }
+        return actual.reduce((difference, byte, index) => difference | (byte ^ expected[index]), 0) === 0;
+    }
+
+    const digest = await window.crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(passcode)
+    );
+    const legacyHash = Array.from(new Uint8Array(digest))
         .map(byte => byte.toString(16).padStart(2, "0"))
         .join("");
+    return legacyHash === storedHash;
+}
+
+function isLegacyPasscodeHash(storedHash) {
+    return typeof storedHash === "string" && !storedHash.startsWith(PASSCODE_HASH_PREFIX);
 }
 
 function getUserPasscodeHashes() {
     const saved = localStorage.getItem(USER_PASSCODE_HASHES_KEY);
     if (!saved) {
-        return {};
+        return Object.create(null);
     }
     const hashes = JSON.parse(saved);
     if (!hashes || Array.isArray(hashes) || typeof hashes !== "object") {
         throw new Error("Saved account passcodes are damaged. Clear this app's local data to reset them.");
     }
-    return hashes;
+    return Object.assign(Object.create(null), hashes);
 }
 
-async function getEncryptionKey(pin, salt) {
+async function getEncryptionKey(pin, salt, iterations) {
     if (!window.crypto?.subtle) {
         throw new Error("Web Crypto is unavailable. Open this app on localhost or HTTPS.");
     }
 
-    const cacheKey = `${pin}:${bytesToBase64(salt)}`;
+    const cacheKey = `${iterations}:${pin}:${bytesToBase64(salt)}`;
     if (encryptionKeys.has(cacheKey)) {
         return encryptionKeys.get(cacheKey);
     }
@@ -68,7 +118,7 @@ async function getEncryptionKey(pin, salt) {
         {
             name: "PBKDF2",
             salt,
-            iterations: 100000,
+            iterations,
             hash: "SHA-256"
         },
         keyMaterial,
@@ -84,7 +134,7 @@ async function getEncryptionKey(pin, salt) {
 async function encryptText(plainText, pin) {
     const salt = window.crypto.getRandomValues(new Uint8Array(16));
     const iv = window.crypto.getRandomValues(new Uint8Array(12));
-    const key = await getEncryptionKey(pin, salt);
+    const key = await getEncryptionKey(pin, salt, PASSCODE_HASH_ITERATIONS);
     const encrypted = await window.crypto.subtle.encrypt(
         { name: "AES-GCM", iv },
         key,
@@ -99,7 +149,7 @@ async function encryptText(plainText, pin) {
 }
 
 async function decryptText(value, pin) {
-    if (!value.startsWith(ENCRYPTED_PREFIX)) {
+    if (!value.startsWith(ENCRYPTED_PREFIX) && !value.startsWith(LEGACY_ENCRYPTION_PREFIX)) {
         return { text: value, legacy: true, failed: false };
     }
 
@@ -110,24 +160,21 @@ async function decryptText(value, pin) {
             failed: false
         };
     } catch (error) {
-        if (pin !== LEGACY_ENCRYPTION_PIN) {
-            try {
-                return {
-                    text: await decryptPayload(value, LEGACY_ENCRYPTION_PIN),
-                    legacy: false,
-                    failed: false
-                };
-            } catch {
-                // The saved ciphertext does not match either supported local key.
-            }
-        }
         console.error("Could not decrypt incident details:", error);
         return { text: "[Could not decrypt: wrong PIN or damaged data]", legacy: false, failed: true };
     }
 }
 
 async function decryptPayload(value, pin) {
-    const payload = base64ToBytes(value.slice(ENCRYPTED_PREFIX.length));
+    const prefix = value.startsWith(ENCRYPTED_PREFIX)
+        ? ENCRYPTED_PREFIX
+        : value.startsWith(LEGACY_ENCRYPTION_PREFIX)
+            ? LEGACY_ENCRYPTION_PREFIX
+            : null;
+    if (!prefix) {
+        throw new Error("Encrypted incident data has an unsupported format.");
+    }
+    const payload = base64ToBytes(value.slice(prefix.length));
     if (payload.length < 16 + 12 + 16) {
         throw new Error("Encrypted incident data is incomplete.");
     }
@@ -135,7 +182,8 @@ async function decryptPayload(value, pin) {
     const salt = payload.slice(0, 16);
     const iv = payload.slice(16, 28);
     const ciphertext = payload.slice(28);
-    const key = await getEncryptionKey(pin, salt);
+    const iterations = prefix === LEGACY_ENCRYPTION_PREFIX ? 100000 : PASSCODE_HASH_ITERATIONS;
+    const key = await getEncryptionKey(pin, salt, iterations);
     const decrypted = await window.crypto.subtle.decrypt(
         { name: "AES-GCM", iv },
         key,
@@ -159,6 +207,9 @@ function base64ToBytes(value) {
 
 // --- CALCULATOR & DECOY LOGIC ---
 function appendCalc(value) {
+    if (currentInput.length >= 64) {
+        return;
+    }
     if (currentInput === "0" || currentInput === "Error") {
         currentInput = value;
     } else {
@@ -256,7 +307,11 @@ async function evaluateCalc() {
     try {
         const userPasscodeHashes = getUserPasscodeHashes();
         for (const [username, storedHash] of Object.entries(userPasscodeHashes)) {
-            if (await hashPasscode(currentInput) === storedHash) {
+            if (await verifyPasscode(currentInput, storedHash)) {
+                if (isLegacyPasscodeHash(storedHash)) {
+                    userPasscodeHashes[username] = await hashPasscode(currentInput);
+                    localStorage.setItem(USER_PASSCODE_HASHES_KEY, JSON.stringify(userPasscodeHashes));
+                }
                 unlockVault(currentInput, username);
                 clearCalc();
                 return;
@@ -265,20 +320,23 @@ async function evaluateCalc() {
 
         const storedHash = localStorage.getItem(PASSCODE_HASH_KEY);
         if (!storedHash && Object.keys(userPasscodeHashes).length === 0) {
-            if (currentInput.length < 4) {
-                window.alert("Choose a calculator passcode with at least 4 characters.");
+            if (currentInput.length < 8) {
+                window.alert("Choose a calculator passcode with at least 8 characters.");
                 clearCalc();
                 return;
             }
             if (window.confirm("First-time setup: use the current calculator display as your secret passcode?")) {
                 localStorage.setItem(PASSCODE_HASH_KEY, await hashPasscode(currentInput));
-                window.alert("Passcode saved on this device. Enter it again to unlock your vault.");
+                window.alert("Passcode saved securely on this device. Enter it again to unlock your vault.");
                 clearCalc();
             }
             return;
         }
 
-        if (storedHash && await hashPasscode(currentInput) === storedHash) {
+        if (storedHash && await verifyPasscode(currentInput, storedHash)) {
+            if (isLegacyPasscodeHash(storedHash)) {
+                localStorage.setItem(PASSCODE_HASH_KEY, await hashPasscode(currentInput));
+            }
             unlockVault(currentInput, null);
             clearCalc();
             return;
@@ -334,25 +392,27 @@ function setAccountMode(mode) {
 
 async function verifyOrSetAccountPasscode(username) {
     const hashes = getUserPasscodeHashes();
-    const currentHash = await hashPasscode(currentVaultPin);
     let accountHash = hashes[username];
 
-    if (accountHash && accountHash !== currentHash) {
+    if (accountHash && !await verifyPasscode(currentVaultPin, accountHash)) {
         const enteredPin = window.prompt("Enter this account's calculator passcode.");
-        if (!enteredPin || await hashPasscode(enteredPin) !== accountHash) {
+        if (!enteredPin || !await verifyPasscode(enteredPin, accountHash)) {
             throw new Error("That account's calculator passcode did not match.");
         }
         currentVaultPin = enteredPin;
         encryptionKeys.clear();
+        if (isLegacyPasscodeHash(accountHash)) {
+            accountHash = await hashPasscode(enteredPin);
+        }
     } else if (!accountHash) {
         const firstDeviceHash = localStorage.getItem(PASSCODE_HASH_KEY);
-        if (firstDeviceHash === currentHash) {
-            accountHash = firstDeviceHash;
+        if (firstDeviceHash && await verifyPasscode(currentVaultPin, firstDeviceHash)) {
+            accountHash = await hashPasscode(currentVaultPin);
             localStorage.removeItem(PASSCODE_HASH_KEY);
         } else {
-            const newPin = window.prompt("Create a calculator passcode for this account (at least 4 characters).");
-            if (!newPin || newPin.length < 4 || !/^[0-9.+*/()\-]+$/.test(newPin)) {
-                throw new Error("Choose a passcode of at least 4 calculator-key characters.");
+            const newPin = window.prompt("Create a calculator passcode for this account (at least 8 calculator-key characters).");
+            if (!newPin || newPin.length < 8 || !/^[0-9.+*/()\-]+$/.test(newPin)) {
+                throw new Error("Choose a passcode of at least 8 calculator-key characters.");
             }
             const confirmation = window.prompt("Enter the account calculator passcode again to confirm.");
             if (confirmation !== newPin) {
@@ -378,6 +438,22 @@ function triggerPanic() {
     clearCalc();
     window.location.href = "https://www.google.com";
 }
+
+document.getElementById("calculator-app").addEventListener("click", event => {
+    const button = event.target.closest("button[data-append], button[data-calc]");
+    if (!button) {
+        return;
+    }
+    if (button.dataset.append !== undefined) {
+        appendCalc(button.dataset.append);
+    } else if (button.dataset.calc === "clear") {
+        clearCalc();
+    } else if (button.dataset.calc === "evaluate") {
+        evaluateCalc();
+    }
+});
+
+document.getElementById("panic-btn").addEventListener("click", triggerPanic);
 
 document.getElementById("account-mode-btn").addEventListener("click", () => {
     setAccountMode(accountMode === "login" ? "register" : "login");
@@ -431,6 +507,123 @@ document.getElementById("logout-btn").addEventListener("click", () => {
     entriesList.replaceChildren();
     setAccountMode("login");
     accountStatus.textContent = "Signed out. Sign in to access an account.";
+});
+
+document.getElementById("change-passcode-btn").addEventListener("click", () => {
+    passcodeForm.reset();
+    passcodeStatus.textContent = "";
+    document.getElementById("save-passcode-btn").disabled = false;
+    passcodeDialog.showModal();
+});
+
+document.getElementById("cancel-passcode-btn").addEventListener("click", () => {
+    passcodeDialog.close();
+});
+
+passcodeForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    const oldPin = document.getElementById("current-passcode").value;
+    const newPin = document.getElementById("new-passcode").value;
+    const confirmation = document.getElementById("confirm-passcode").value;
+    const archiveAlreadyRekeyed = document.getElementById("archive-already-rekeyed").checked;
+    const submitButton = document.getElementById("save-passcode-btn");
+    submitButton.disabled = true;
+    passcodeStatus.textContent = "Verifying your current passcode...";
+
+    try {
+        if (!accessToken || !unlockAccountHint || !currentVaultPin) {
+            throw new Error("Sign in to your account before changing the passcode.");
+        }
+        if (oldPin !== currentVaultPin) {
+            throw new Error("The current passcode did not match this device's unlocked passcode.");
+        }
+        if (newPin.length < 8 || newPin.length > 64 || !/^[0-9.+*/()\-]+$/.test(newPin)) {
+            throw new Error("Use 8-64 numbers or calculator symbols.");
+        }
+        if (newPin !== confirmation) {
+            throw new Error("The new passcodes did not match.");
+        }
+        if (newPin === oldPin) {
+            throw new Error("Choose a passcode different from the current one.");
+        }
+
+        const passcodeHashes = getUserPasscodeHashes();
+        const currentHash = passcodeHashes[unlockAccountHint];
+        if (!await verifyPasscode(oldPin, currentHash)) {
+            throw new Error("The current passcode did not match the saved account passcode.");
+        }
+
+        const updatedHash = await hashPasscode(newPin);
+        const storageProbe = `${USER_PASSCODE_HASHES_KEY}_probe`;
+        localStorage.setItem(storageProbe, "available");
+        localStorage.removeItem(storageProbe);
+
+        if (!archiveAlreadyRekeyed) {
+            passcodeStatus.textContent = "Loading your encrypted archive...";
+            const loadResponse = await fetch(API_URL, {
+                headers: { Authorization: `Bearer ${accessToken}` }
+            });
+            if (!loadResponse.ok) {
+                throw new Error(`Could not load the archive (HTTP ${loadResponse.status}).`);
+            }
+            const entries = await loadResponse.json();
+            if (!Array.isArray(entries)) {
+                throw new Error("The server returned an unexpected archive response.");
+            }
+            if (entries.length > 500) {
+                throw new Error("Your archive contains more than 500 entries. Export or archive older entries before changing its encryption passcode.");
+            }
+
+            passcodeStatus.textContent = "Re-encrypting your saved entries...";
+            const rekeyedEntries = [];
+            for (const entry of entries) {
+                const decrypted = await decryptText(entry.details || "", oldPin);
+                if (decrypted.failed) {
+                    throw new Error(`Entry #${entry.id} could not be opened with the current passcode. No archive changes were saved. If it uses an earlier passcode, use its recovery option first.`);
+                }
+                rekeyedEntries.push({
+                    id: entry.id,
+                    details: await encryptText(decrypted.text, newPin)
+                });
+            }
+
+            if (rekeyedEntries.length > 0) {
+                const updateResponse = await fetch(`${API_URL}/rekey`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${accessToken}`
+                    },
+                    body: JSON.stringify({ entries: rekeyedEntries })
+                });
+                if (!updateResponse.ok) {
+                    throw new Error(`The server could not update your encrypted archive (HTTP ${updateResponse.status}).`);
+                }
+                const result = await updateResponse.json();
+                if (result.updated !== rekeyedEntries.length) {
+                    throw new Error("The server did not confirm every entry update.");
+                }
+            }
+        }
+
+        passcodeHashes[unlockAccountHint] = updatedHash;
+        localStorage.setItem(USER_PASSCODE_HASHES_KEY, JSON.stringify(passcodeHashes));
+        currentVaultPin = newPin;
+        encryptionKeys.clear();
+        document.getElementById("current-passcode").value = "";
+        document.getElementById("new-passcode").value = "";
+        document.getElementById("confirm-passcode").value = "";
+        passcodeDialog.close();
+        apiStatus.textContent = archiveAlreadyRekeyed
+            ? "This device now uses the archive's existing passcode."
+            : "Passcode changed and archive re-encrypted. Use the new passcode on your other devices too.";
+        await loadEntriesFromBackend();
+    } catch (error) {
+        passcodeStatus.textContent = error.message;
+        console.error("Could not change the calculator passcode:", error);
+    } finally {
+        submitButton.disabled = false;
+    }
 });
 
 // --- FULL-STACK API INTEGRATION (FETCH API) ---
@@ -583,6 +776,45 @@ async function renderEntries(entries, pin) {
         metadata.textContent = `Database Record ID: #${item.id} | ${item.timestamp || ""} | ${encryptionLabel}`;
 
         card.append(title, details, metadata);
+        if (result.failed) {
+            const recoverButton = document.createElement("button");
+            recoverButton.type = "button";
+            recoverButton.className = "legacy-recovery-btn";
+            recoverButton.textContent = "Recover & re-encrypt with current passcode";
+            recoverButton.addEventListener("click", async () => {
+                const previousPin = window.prompt("Enter the earlier calculator passcode used to encrypt this entry.");
+                if (!previousPin) {
+                    return;
+                }
+                recoverButton.disabled = true;
+                try {
+                    if (!currentVaultPin || !accessToken) {
+                        throw new Error("Sign in to the account before recovering this entry.");
+                    }
+                    const recovered = await decryptPayload(item.details || "", previousPin);
+                    const encrypted = await encryptText(recovered, currentVaultPin);
+                    const response = await fetch(`${API_URL}/${encodeURIComponent(item.id)}`, {
+                        method: "PUT",
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${accessToken}`
+                        },
+                        body: JSON.stringify({ details: encrypted })
+                    });
+                    if (!response.ok) {
+                        throw new Error(`The recovered entry could not be saved (HTTP ${response.status}).`);
+                    }
+                    details.textContent = recovered;
+                    metadata.textContent = `Database Record ID: #${item.id} | ${item.timestamp || ""} | Re-encrypted with the current passcode`;
+                    recoverButton.remove();
+                } catch (error) {
+                    console.error("Could not decrypt an entry with the supplied earlier passcode:", error);
+                    details.textContent = `Could not recover this entry: ${error.message} Its saved data was not changed.`;
+                    recoverButton.disabled = false;
+                }
+            });
+            card.appendChild(recoverButton);
+        }
         entriesList.appendChild(card);
     });
 }
