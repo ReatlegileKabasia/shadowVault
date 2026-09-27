@@ -1,13 +1,16 @@
 package com.example.shadowvault.service;
 
 import com.example.shadowvault.dto.AuthRequest;
+import com.example.shadowvault.dto.AccountDeletionRequest;
 import com.example.shadowvault.dto.AuthResponse;
+import com.example.shadowvault.repository.IncidentRepository;
 import com.example.shadowvault.model.User;
 import com.example.shadowvault.repository.UserRepository;
 import com.example.shadowvault.security.JwtService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Locale;
@@ -16,11 +19,17 @@ import java.util.Locale;
 public class AuthService {
 
     private final UserRepository users;
+    private final IncidentRepository incidents;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
 
-    public AuthService(UserRepository users, PasswordEncoder passwordEncoder, JwtService jwtService) {
+    public AuthService(
+            UserRepository users,
+            IncidentRepository incidents,
+            PasswordEncoder passwordEncoder,
+            JwtService jwtService) {
         this.users = users;
+        this.incidents = incidents;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
     }
@@ -50,6 +59,27 @@ public class AuthService {
                     HttpStatus.UNAUTHORIZED, "Invalid username or password.");
         }
         return createResponse(user);
+    }
+
+    @Transactional
+    public void deleteAccount(String subject, AccountDeletionRequest request) {
+        long userId;
+        try {
+            userId = Long.parseLong(subject);
+        } catch (NumberFormatException exception) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid access token.");
+        }
+
+        User user = users.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNAUTHORIZED, "Account no longer exists."));
+        if (!passwordEncoder.matches(request.password(), user.getPassword())) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "The account password did not match.");
+        }
+
+        incidents.deleteByUser_Id(userId);
+        users.delete(user);
     }
 
     private AuthResponse createResponse(User user) {

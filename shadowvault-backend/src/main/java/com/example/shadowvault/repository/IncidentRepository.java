@@ -19,4 +19,6 @@ public interface IncidentRepository extends JpaRepository<Incident, Long> {
     List<Incident> findByUserIdOrderByIdAsc(Long userId);
 
     Optional<Incident> findByIdAndUser_Id(Long id, Long userId);
+
+    void deleteByUser_Id(Long userId);
 }
