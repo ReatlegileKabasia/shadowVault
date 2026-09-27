@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="description" content="A private, encrypted incident journal for your personal records.">
+    <meta name="description" content="A journal that encrypts entry details in your browser before syncing. Account names, titles, and timestamps remain visible to the service.">
     <meta name="theme-color" content="#101815">
     <meta name="referrer" content="no-referrer">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://shadowvault-backend-ap1n.onrender.com; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests">
@@ -98,6 +98,8 @@
                             </span>
                             <span id="account-name" class="account-name"></span>
                             <button type="button" id="change-passcode-btn" class="text-btn">Change local passcode</button>
+                            <button type="button" id="export-data-btn" class="text-btn">Export my entries</button>
+                            <button type="button" id="delete-account-btn" class="text-btn danger-text-btn">Delete account and entries</button>
                             <button type="button" id="logout-btn" class="text-btn">Switch account</button>
                         </div>
                     </section>
@@ -109,10 +111,11 @@
                                 <path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
                             </svg>
                         </span>
-                        <h3>Private by design</h3>
-                        <p>Entry details are encrypted on this device before syncing. Titles and dates are visible to the service.</p>
+                        <h3>Know what is protected</h3>
+                        <p>New entry details are encrypted in this browser before syncing. Account names, titles, and timestamps are visible to the service. Older entries may be unencrypted.</p>
                         <div class="privacy-divider"></div>
-                        <span class="privacy-footnote"><span aria-hidden="true">●</span> Your local passcode never leaves this device</span>
+                        <span class="privacy-footnote"><span aria-hidden="true">●</span> No emergency monitoring or response is provided.</span>
+                        <button type="button" id="privacy-details-btn" class="text-btn privacy-details-btn">Privacy &amp; safety limits</button>
                     </section>
                 </aside>
 
@@ -172,7 +175,7 @@
                             </div>
                         </div>
                     </section>
-                    <footer class="vault-footer">SHADOWVAULT <span>·</span> Your records stay yours.</footer>
+                    <footer class="vault-footer">SHADOWVAULT <span>·</span> Review the privacy and safety limits before use.</footer>
                 </main>
             </div>
         </div>
@@ -195,6 +198,38 @@
             <div class="passcode-actions">
                 <button type="button" id="cancel-passcode-btn" class="secondary-action-btn">Cancel</button>
                 <button type="submit" id="save-passcode-btn" class="primary-btn">Re-encrypt and save</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="privacy-safety-dialog" class="passcode-dialog" aria-labelledby="privacy-safety-heading">
+        <div class="passcode-form">
+            <span class="section-eyebrow">PRIVACY &amp; SAFETY</span>
+            <h2 id="privacy-safety-heading">What ShadowVault does and does not protect</h2>
+            <p>New entry details are encrypted in this browser before they are sent to the backend. The account username, entry title, timestamp, and encrypted details are stored by the service. The operator and infrastructure providers may process account, network, and operational data.</p>
+            <p>The service does not receive the local passcode as part of normal encryption. The browser stores a salted passcode verifier locally. Anyone with control of your unlocked device or browser profile may be able to access your account or records. Entries created before encryption was enabled may be stored as readable text.</p>
+            <p><strong>Safety limits:</strong> ShadowVault is not an emergency service, does not monitor entries or send alerts, and cannot guarantee that saving or syncing will work. Quick exit only closes the vault view; it does not erase browser history, device activity, notifications, screenshots, or records already seen by someone else. Test the app on your device and avoid using it where discovery could put you at risk.</p>
+            <p>Export creates a plaintext file on your device. Account deletion removes the account and its entries from the active application database after password confirmation; hosting-provider backups and operational records may be subject to separate retention. No retention period or deletion-from-backups guarantee is made here.</p>
+            <p>This in-app summary is not a complete privacy notice or a substitute for local emergency, legal, or professional support.</p>
+            <div class="passcode-actions">
+                <button type="button" id="close-privacy-details-btn" class="secondary-action-btn">Close</button>
+            </div>
+        </div>
+    </dialog>
+
+    <dialog id="delete-account-dialog" class="passcode-dialog" aria-labelledby="delete-account-heading">
+        <form id="delete-account-form" class="passcode-form">
+            <span class="section-eyebrow">PERMANENT ACCOUNT ACTION</span>
+            <h2 id="delete-account-heading">Delete account and entries?</h2>
+            <p>This permanently deletes the account and its entries from the active application database. It cannot be undone. It does not guarantee immediate removal from hosting-provider backups, logs, or files you previously exported.</p>
+            <label for="delete-account-username">Type your username to confirm</label>
+            <input id="delete-account-username" type="text" autocomplete="off" maxlength="32" required>
+            <label for="delete-account-password">Account password</label>
+            <input id="delete-account-password" type="password" autocomplete="current-password" minlength="12" maxlength="72" required>
+            <p id="delete-account-status" class="status-message" role="status" aria-live="polite"></p>
+            <div class="passcode-actions">
+                <button type="button" id="cancel-delete-account-btn" class="secondary-action-btn">Cancel</button>
+                <button type="submit" id="confirm-delete-account-btn" class="danger-action-btn">Permanently delete</button>
             </div>
         </form>
     </dialog>

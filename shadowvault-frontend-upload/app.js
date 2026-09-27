@@ -14,6 +14,7 @@ let currentInput = "0";
 let currentVaultPin = null;
 let unlockAccountHint = null;
 let accessToken = null;
+let signedInUsername = null;
 let accountMode = "login";
 let deferredInstallPrompt = null;
 
@@ -30,6 +31,9 @@ const accountStatus = document.getElementById("account-status");
 const passcodeDialog = document.getElementById("change-passcode-dialog");
 const passcodeForm = document.getElementById("change-passcode-form");
 const passcodeStatus = document.getElementById("passcode-status");
+const privacySafetyDialog = document.getElementById("privacy-safety-dialog");
+const deleteAccountDialog = document.getElementById("delete-account-dialog");
+const deleteAccountForm = document.getElementById("delete-account-form");
 
 async function derivePasscodeHash(passcode, salt, iterations) {
     const material = await window.crypto.subtle.importKey(
@@ -429,14 +433,26 @@ async function verifyOrSetAccountPasscode(username) {
     unlockAccountHint = username;
 }
 
-function triggerPanic() {
-    vault.classList.add("hidden");
+function clearSignedInSession(message) {
     currentVaultPin = null;
     unlockAccountHint = null;
     accessToken = null;
+    signedInUsername = null;
     encryptionKeys.clear();
+    entriesList.replaceChildren();
+    incidentForm.classList.add("hidden");
+    accountSession.classList.add("hidden");
+    accountPanel.classList.remove("hidden");
+    document.getElementById("account-name").textContent = "";
+    document.getElementById("account-password").value = "";
+    accountStatus.textContent = message;
+}
+
+function triggerPanic() {
+    vault.classList.add("hidden");
+    clearSignedInSession("");
     clearCalc();
-    window.location.href = "https://www.google.com";
+    screen.focus({ preventScroll: true });
 }
 
 document.getElementById("calculator-app").addEventListener("click", event => {
@@ -486,6 +502,7 @@ accountForm.addEventListener("submit", async event => {
 
         await verifyOrSetAccountPasscode(result.username);
         accessToken = result.accessToken;
+        signedInUsername = result.username;
         passwordInput.value = "";
         accountStatus.textContent = "";
         document.getElementById("account-name").textContent = `Signed in as ${result.username}`;
@@ -500,13 +517,165 @@ accountForm.addEventListener("submit", async event => {
 });
 
 document.getElementById("logout-btn").addEventListener("click", () => {
-    accessToken = null;
-    accountSession.classList.add("hidden");
-    incidentForm.classList.add("hidden");
-    accountPanel.classList.remove("hidden");
-    entriesList.replaceChildren();
+    clearSignedInSession("Signed out. Sign in to access an account.");
     setAccountMode("login");
-    accountStatus.textContent = "Signed out. Sign in to access an account.";
+});
+
+document.getElementById("privacy-details-btn").addEventListener("click", () => {
+    privacySafetyDialog.showModal();
+});
+
+document.getElementById("close-privacy-details-btn").addEventListener("click", () => {
+    privacySafetyDialog.close();
+});
+
+document.getElementById("export-data-btn").addEventListener("click", async () => {
+    if (!accessToken || !currentVaultPin) {
+        apiStatus.textContent = "Unlock the vault and sign in before exporting.";
+        return;
+    }
+    if (!window.confirm("This downloads your entry details as a readable plaintext JSON file. Anyone who can access that file can read it. Continue?")) {
+        return;
+    }
+
+    apiStatus.textContent = "Preparing your private export...";
+    try {
+        const response = await fetch(API_URL, {
+            headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        if (!response.ok) {
+            if (response.status === 401) {
+                clearSignedInSession("Your session expired. Sign in again.");
+            }
+            throw new Error(`Export request failed (HTTP ${response.status}).`);
+        }
+
+        const records = await response.json();
+        if (!Array.isArray(records)) {
+            throw new Error("The server returned an unexpected archive response.");
+        }
+        const entries = [];
+        for (const record of records) {
+            const result = await decryptText(record.details || "", currentVaultPin);
+            if (result.failed) {
+                throw new Error(`Entry #${record.id} could not be decrypted. No export was created.`);
+            }
+            entries.push({
+                id: record.id,
+                title: record.title || "",
+                timestamp: record.timestamp || "",
+                details: result.text
+            });
+        }
+
+        const exportData = {
+            format: "shadowvault-entry-export-v1",
+            exportedAt: new Date().toISOString(),
+            entries
+        };
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+            type: "application/json"
+        });
+        const objectUrl = URL.createObjectURL(blob);
+        const download = document.createElement("a");
+        const filenameUser = (signedInUsername || "account").replace(/[^a-z0-9_-]/gi, "_");
+        download.href = objectUrl;
+        download.download = `shadowvault-${filenameUser}-${new Date().toISOString().slice(0, 10)}.json`;
+        download.click();
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+        apiStatus.textContent = "Export downloaded. Store it securely; its entry details are readable.";
+    } catch (error) {
+        apiStatus.textContent = `Could not export entries: ${error.message}`;
+        console.error("Could not export account entries:", error);
+    }
+});
+
+document.getElementById("delete-account-btn").addEventListener("click", () => {
+    deleteAccountForm.reset();
+    document.getElementById("delete-account-status").textContent = "";
+    document.getElementById("confirm-delete-account-btn").disabled = false;
+    deleteAccountDialog.showModal();
+});
+
+document.getElementById("cancel-delete-account-btn").addEventListener("click", () => {
+    deleteAccountDialog.close();
+});
+
+deleteAccountForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    const usernameInput = document.getElementById("delete-account-username");
+    const passwordInput = document.getElementById("delete-account-password");
+    const status = document.getElementById("delete-account-status");
+    const submitButton = document.getElementById("confirm-delete-account-btn");
+    if (!accessToken || !signedInUsername) {
+        status.textContent = "Sign in before deleting an account.";
+        return;
+    }
+    if (usernameInput.value.trim().toLowerCase() !== signedInUsername.toLowerCase()) {
+        status.textContent = "The username did not match the signed-in account.";
+        return;
+    }
+
+    submitButton.disabled = true;
+    status.textContent = "Verifying your password and deleting the account...";
+    try {
+        const response = await fetch(`${API_BASE_URL.replace(/\/+$/, "")}/api/auth/me`, {
+            method: "DELETE",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${accessToken}`
+            },
+            body: JSON.stringify({ password: passwordInput.value })
+        });
+        if (!response.ok) {
+            let detail = `Account deletion failed (HTTP ${response.status}).`;
+            try {
+                const result = await response.json();
+                detail = result.detail || result.message || detail;
+            } catch {
+                // Keep the HTTP error when the server response has no JSON body.
+            }
+            throw new Error(detail);
+        }
+
+        const username = signedInUsername;
+        let localStorageWarning = "";
+        try {
+            const hashes = getUserPasscodeHashes();
+            delete hashes[username];
+            if (Object.keys(hashes).length) {
+                localStorage.setItem(USER_PASSCODE_HASHES_KEY, JSON.stringify(hashes));
+            } else {
+                localStorage.removeItem(USER_PASSCODE_HASHES_KEY);
+            }
+        } catch (error) {
+            console.error("Account was deleted, but its local passcode verifier could not be cleared:", error);
+            localStorageWarning = " Clear this browser's ShadowVault site data to remove its local passcode verifier.";
+        }
+
+        deleteAccountDialog.close();
+        accessToken = null;
+        currentVaultPin = null;
+        unlockAccountHint = null;
+        signedInUsername = null;
+        encryptionKeys.clear();
+        accountSession.classList.add("hidden");
+        incidentForm.classList.add("hidden");
+        accountPanel.classList.remove("hidden");
+        entriesList.replaceChildren();
+        document.getElementById("account-name").textContent = "";
+        document.getElementById("account-username").value = "";
+        document.getElementById("account-password").value = "";
+        accountStatus.textContent =
+            "Account and entries were deleted from the active app database. Hosting backups and operational records may follow separate retention." +
+            localStorageWarning;
+    } catch (error) {
+        status.textContent = error.message;
+        console.error("Could not delete the account:", error);
+    } finally {
+        submitButton.disabled = false;
+        passwordInput.value = "";
+    }
 });
 
 document.getElementById("change-passcode-btn").addEventListener("click", () => {
@@ -661,11 +830,7 @@ incidentForm.addEventListener("submit", async function (event) {
 
         if (!response.ok) {
             if (response.status === 401) {
-                accessToken = null;
-                accountSession.classList.add("hidden");
-                incidentForm.classList.add("hidden");
-                accountPanel.classList.remove("hidden");
-                accountStatus.textContent = "Your session expired. Sign in again.";
+                clearSignedInSession("Your session expired. Sign in again.");
             }
             throw new Error(`Save failed (HTTP ${response.status}).`);
         }
@@ -702,11 +867,7 @@ async function loadEntriesFromBackend() {
         });
         if (!response.ok) {
             if (response.status === 401) {
-                accessToken = null;
-                accountSession.classList.add("hidden");
-                incidentForm.classList.add("hidden");
-                accountPanel.classList.remove("hidden");
-                accountStatus.textContent = "Your session expired. Sign in again.";
+                clearSignedInSession("Your session expired. Sign in again.");
                 return false;
             }
             throw new Error(`Request failed (HTTP ${response.status}).`);

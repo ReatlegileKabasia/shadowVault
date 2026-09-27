@@ -553,6 +553,28 @@ textarea:focus-visible {
     text-align: left;
 }
 
+.account-session #export-data-btn,
+.account-session #delete-account-btn {
+    width: 100%;
+    margin: 0;
+    text-align: left;
+}
+
+.danger-text-btn {
+    color: #e2a59b;
+}
+
+.danger-text-btn:hover {
+    color: #ffc0b5;
+}
+
+.privacy-details-btn {
+    min-height: 32px;
+    margin-top: 9px;
+    padding: 0;
+    text-align: left;
+}
+
 .passcode-dialog {
     width: min(calc(100% - 32px), 440px);
     max-height: min(90dvh, 760px);
@@ -659,6 +681,27 @@ textarea:focus-visible {
 
 .secondary-action-btn:hover {
     background: rgba(255, 255, 255, 0.05);
+}
+
+.danger-action-btn {
+    min-height: 43px;
+    padding: 0 15px;
+    border: 1px solid rgba(229, 165, 154, 0.28);
+    border-radius: 10px;
+    background: rgba(229, 100, 87, 0.14);
+    color: #ffc0b5;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.danger-action-btn:hover {
+    background: rgba(229, 100, 87, 0.24);
+}
+
+.danger-action-btn:disabled {
+    cursor: wait;
+    opacity: 0.7;
 }
 
 .journal-main {
